@@ -10,6 +10,27 @@ menu "Zephyr"
 source "Kconfig.zephyr"
 endmenu
 
+menu "My Course Application Config"
+
 module = APP
 module-str = APP
 source "subsys/logging/Kconfig.template.log_config"
+
+config MY_CONFIGURATION_VALUE
+	int "My configuration value"
+	range 0 99
+	default 0
+
+config MY_CONFIGURATON_GREETING
+	string "This phrase will be used to greet from application"
+	default "Zephyr Course"
+	help
+	  Phrase used to greet from application.
+
+config MY_BOOLEAN_CONFIG
+    bool "My beloved boolean config"
+    default N
+    help 
+      Just to test it out
+
+endmenu

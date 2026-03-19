@@ -18,6 +18,7 @@ static void button_event_cb(lv_event_t *e)
 
 int main(void)
 {
+	LOG_INF("Greet: %s", CONFIG_MY_CONFIGURATON_GREETING);
 	const struct device *display_dev;
 
 	display_dev = DEVICE_DT_GET(DT_CHOSEN(zephyr_display));
