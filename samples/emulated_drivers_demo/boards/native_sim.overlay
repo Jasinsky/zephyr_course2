@@ -1,0 +1,25 @@
+/*
+ * Overlay for native_sim: configure emulated peripherals for the demo.
+ *
+ * native_sim already provides:
+ *   gpio0  - "zephyr,gpio-emul" controller
+ *   adc0   - "zephyr,adc-emul"  controller (2 channels)
+ *   led0   - alias for gpio0 pin 0
+ *
+ * This overlay adds:
+ *   - A zephyr,user node with an emulated GPIO input (button)
+ *   - VDD reference voltage on the emulated ADC
+ */
+
+/ {
+	zephyr,user {
+		/* Emulated GPIO input on gpio0 pin 1 (acts as a button) */
+		input-gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&adc0 {
+	status = "okay";
+	/* Set VDD reference so raw-to-millivolt conversion works */
+	ref-vdd-mv = <3300>;
+};
