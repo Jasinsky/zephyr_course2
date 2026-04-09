@@ -46,6 +46,7 @@ struct demo_device_data {
  */
 struct demo_device_config {
 	const char *label; /**< @brief Human-readable label from the DTS @c label property; may be @c NULL. */
+    int numeric_id; /**< @brief Optional numeric ID from the DTS @c numeric_id property; may be -1 if not set. */
 };
 
 /**
@@ -206,6 +207,7 @@ static int demo_device_init(const struct device *dev)
                                                                                \
 	static const struct demo_device_config demo_config_##inst = {          \
 		.label = DT_INST_PROP_OR(inst, label, NULL),                   \
+        .numeric_id = DT_INST_PROP_OR(inst, numeric_id, -1),           \
 	};                                                                     \
                                                                                \
 	DEVICE_DT_INST_DEFINE(inst,                                            \

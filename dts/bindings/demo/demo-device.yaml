@@ -23,3 +23,8 @@ properties:
     description: |
       Human-readable name for this demo device instance.
       Used in log messages so you can distinguish multiple instances.
+  numeric_id:
+    type: int
+    description: |
+      An optional numeric ID for this demo device instance.
+      Used in log messages so you can distinguish multiple instances.

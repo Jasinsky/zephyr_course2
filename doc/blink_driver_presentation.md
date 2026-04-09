@@ -25,7 +25,7 @@ style: |
 
 # Building Zephyr Device Drivers
 
-## The Blink GPIO LED Driver — A Complete Walkthrough
+## The Demo Device Driver — A Complete Walkthrough
 
 > For engineers new to Zephyr driver development
 
@@ -35,52 +35,61 @@ style: |
 
 ```
 zephyr_course2/
-├── boards/vendor/custom_plank/
-│   └── custom_plank.dts          ← Device Tree Source (hardware instance)
-├── dts/bindings/blink/
-│   └── blink-gpio-leds.yaml      ← Node schema / binding
-├── drivers/blink/
-│   ├── gpio_led.c                ← Driver implementation
+├── samples/demo_driver/
+│   ├── boards/native_sim.overlay ← DT overlay — instantiates the device
+│   ├── src/main.c                ← Sample application
+│   ├── prj.conf                  ← Kconfig fragment
+│   └── CMakeLists.txt
+├── dts/bindings/demo/
+│   └── demo-device.yaml          ← Node schema / binding
+├── drivers/demo/
+│   ├── demo_device.c             ← Driver implementation
 │   ├── CMakeLists.txt            ← Build integration
 │   ├── Kconfig                   ← Driver class config
-│   └── Kconfig.gpio_led          ← Per-driver config
+│   └── Kconfig.demo_device       ← Per-driver config
 └── include/app/drivers/
-    └── blink.h                   ← Public API header
+    └── demo.h                    ← Public API header
 ```
 
 ---
 
-## Where Is the `.dts` File?
+## What Does This Driver Do?
 
-### `boards/vendor/custom_plank/custom_plank.dts`
+The `demo-device` is a **pure software driver** — no real hardware needed.
 
-In Zephyr, `.dts` files live under `boards/<vendor>/<board_name>/`
+Every API call is answered with a **Zephyr log message**, making the call chain fully visible at runtime.
 
-- One `.dts` per board target
-- Describes the **hardware topology** of a specific board
-- Where you **instantiate** your driver as a devicetree node
+**Three API functions:**
 
-> The YAML binding defines the **schema**, the `.dts` provides the **instance**
+| Function | What it does |
+|----------|-------------|
+| `demo_enable(dev)` | Transitions device → ENABLED; logs the event |
+| `demo_disable(dev)` | Transitions device → DISABLED; logs the event |
+| `demo_get_status(dev, &status)` | Reads and logs the current state |
+
+> Perfect for teaching how drivers are structured — without needing hardware.
 
 ---
 
 ## The Glue: `compatible` String
 
-The `compatible` property is the link between all layers:
+The `compatible` property connects all three layers:
 
 ```
-custom_plank.dts
-    compatible = "blink-gpio-led"
+native_sim.overlay
+    compatible = "demo-device"
           │
           ▼
-blink-gpio-leds.yaml   (schema validation)
+demo-device.yaml   (schema validation at build time)
           │
           ▼
-gpio_led.c
-    #define DT_DRV_COMPAT blink_gpio_led
+demo_device.c
+    #define DT_DRV_COMPAT demo_device
 ```
 
-**One string connects the hardware description → schema → C driver.**
+**One string links the DT instance → YAML schema → C driver.**
+
+`demo_device` is the **snake_case** form of `"demo-device"`.
 
 ---
 
@@ -88,170 +97,223 @@ gpio_led.c
 
 | # | File | Role |
 |---|------|------|
-| 1 | `custom_plank.dts` | Hardware instance — which GPIO, what period |
-| 2 | `blink-gpio-leds.yaml` | Schema / contract — valid properties & types |
-| 3 | `blink.h` | Public API — what applications call |
-| 4 | `gpio_led.c` | Implementation — the actual driver code |
-| 5 | `Kconfig.gpio_led` | Feature selection — auto-enable from DT |
+| 1 | `native_sim.overlay` | DT instance — label, numeric_id, status |
+| 2 | `demo-device.yaml` | Schema / contract — valid properties & types |
+| 3 | `demo.h` | Public API — what applications call |
+| 4 | `demo_device.c` | Implementation — logging + state machine |
+| 5 | `Kconfig.demo_device` | Feature selection — auto-enable from DT |
 
 ---
 
-## File 1: The `.dts` — Hardware Instance
+## File 1: The DT Overlay — Device Instance
 
 ```dts
 / {
-    blink_led: blink-led {
-        compatible = "blink-gpio-led";           /* links to YAML binding */
-        led-gpios = <&gpio0 13 GPIO_ACTIVE_LOW>; /* LED on GPIO0 pin 13 */
-        blink-period-ms = <1000>;                /* blink every 1 second */
+    demo_dev0: demo-device-0 {
+        compatible = "demo-device"; /* links to YAML binding */
+        label = "DEMO_0";           /* name used in log messages */
+        numeric_id = <1>;           /* optional numeric identifier */
+        status = "okay";
+    };
+
+    demo_dev1: demo-device-1 {
+        compatible = "demo-device";
+        label = "DEMO_1";
+        numeric_id = <2>;
+        status = "okay";
     };
 };
 ```
 
-- The **board bring-up engineer** writes this
-- Add a second `blink-led` node → get a second driver instance automatically
-- No C code changes required
+- Two nodes → **two independent driver instances** — no C changes needed
+- Overlay is board-specific: `boards/native_sim.overlay`
 
 ---
 
 ## File 2: The Binding YAML — Schema
 
 ```yaml
-compatible: "blink-gpio-led"
+compatible: "demo-device"
 include: base.yaml
 
 properties:
-  led-gpios:
-    type: phandle-array
-    required: true
-    description: GPIO-controlled LED.
+  label:
+    type: string
+    description: |
+      Human-readable name for this demo device instance.
+      Used in log messages so you can distinguish multiple instances.
 
-  blink-period-ms:
+  numeric_id:
     type: int
-    description: Initial blinking period in milliseconds.
+    description: |
+      An optional numeric ID for this demo device instance.
 ```
 
-- Zephyr's `dtc` validates every `.dts` node against this YAML at build time
-- No vendor prefix → **virtual/software device**, no real silicon
+- Zephyr's `dtc` validates every DT node against this YAML **at build time**
+- No vendor prefix → **virtual/software device**, no real silicon required
 
 ---
 
-## File 3: The Driver Header — Public API
+## File 3: The Driver Header — Public API (`demo.h`)
 
 ```c
-/* Operations table (vtable) for the blink driver class */
-__subsystem struct blink_driver_api {
-    int (*set_period_ms)(const struct device *dev, unsigned int period_ms);
+/** Status of a demo device instance. */
+enum demo_status {
+    DEMO_STATUS_DISABLED = 0,
+    DEMO_STATUS_ENABLED  = 1,
 };
 
-/* Public function applications call */
-__syscall int blink_set_period_ms(const struct device *dev,
-                                  unsigned int period_ms);
+/** Operations table (vtable) — filled in by demo_device.c */
+__subsystem struct demo_driver_api {
+    int (*enable)    (const struct device *dev);
+    int (*disable)   (const struct device *dev);
+    int (*get_status)(const struct device *dev, enum demo_status *status);
+};
+
+/** Public inline wrappers — the only functions applications call */
+static inline int demo_enable    (const struct device *dev);
+static inline int demo_disable   (const struct device *dev);
+static inline int demo_get_status(const struct device *dev,
+                                   enum demo_status *status);
 ```
 
-- `__subsystem` enables Zephyr's syscall generator to create userspace wrappers
-- `__syscall` allows crossing the kernel/userspace boundary
-- Applications call `blink_set_period_ms()` — never `gpio_led.c` directly
-
-> **Polymorphism via function pointers** — `blink_driver_api` is the interface
+> **Polymorphism via function pointers** — `demo_driver_api` is the interface; `demo_device.c` is one concrete implementation.
 
 ---
 
-## File 4: Driver Implementation — Key Parts (1/3)
-
-### DT compat and config struct
+## File 4: Driver Implementation — Structs (1/3)
 
 ```c
-#define DT_DRV_COMPAT blink_gpio_led  /* snake_case of "blink-gpio-led" */
+/** @cond */
+#define DT_DRV_COMPAT demo_device  /* snake_case of "demo-device" */
+/** @endcond */
 
-struct blink_gpio_led_config {
-    struct gpio_dt_spec led;    /* populated from led-gpios in DTS */
-    unsigned int period_ms;     /* populated from blink-period-ms in DTS */
+/** Per-instance runtime state — mutated by enable/disable. */
+struct demo_device_data {
+    bool enabled; /**< Current enable/disable state. */
+};
+
+/** Per-instance compile-time config — read from DTS, never changes. */
+struct demo_device_config {
+    const char *label;  /**< From DTS label property; may be NULL. */
+    int numeric_id;     /**< From DTS numeric_id property; -1 if absent. */
 };
 ```
 
-Values are read from the devicetree **at compile time** — zero runtime overhead.
+Config values are baked in **at compile time** via DT macros — zero runtime overhead.
 
 ---
 
-## File 4: Driver Implementation — Key Parts (2/3)
-
-### Timer callback and API table
+## File 4: Driver Implementation — API Functions (2/3)
 
 ```c
-static void blink_gpio_led_on_timer_expire(struct k_timer *timer)
+static int demo_device_enable(const struct device *dev)
 {
-    const struct device *dev = k_timer_user_data_get(timer);
-    const struct blink_gpio_led_config *config = dev->config;
-    gpio_pin_toggle_dt(&config->led);  /* toggle the LED */
-}
+    struct demo_device_data *data = dev->data;
 
-static DEVICE_API(blink, blink_gpio_led_api) = {
-    .set_period_ms = &blink_gpio_led_set_period_ms,
-};
+    LOG_INF("[%s] demo_enable() called", dev_label(dev));
+
+    if (data->enabled) {
+        LOG_WRN("[%s] already enabled — returning -EALREADY",
+                dev_label(dev));
+        return -EALREADY;
+    }
+    data->enabled = true;
+    LOG_INF("[%s] device is now ENABLED", dev_label(dev));
+    return 0;
+}
 ```
 
-`DEVICE_API` registers this struct as the implementation of the blink interface.
+- Same pattern for `demo_device_disable()` and `demo_device_get_status()`
+- Every path through the code **emits a log line**
 
 ---
 
-## File 4: Driver Implementation — Key Parts (3/3)
-
-### Instance macro — the magic
+## File 4: Driver Implementation — Instance Macro (3/3)
 
 ```c
-#define BLINK_GPIO_LED_DEFINE(inst)                              \
-    static struct blink_gpio_led_data data##inst;                \
-    static const struct blink_gpio_led_config config##inst = {   \
-        .led = GPIO_DT_SPEC_INST_GET(inst, led_gpios),           \
-        .period_ms = DT_INST_PROP_OR(inst, blink_period_ms, 0U), \
-    };                                                           \
-    DEVICE_DT_INST_DEFINE(inst, blink_gpio_led_init, NULL,       \
-                          &data##inst, &config##inst,            \
-                          POST_KERNEL, CONFIG_BLINK_INIT_PRIORITY,\
-                          &blink_gpio_led_api);
+#define DEMO_DEVICE_DEFINE(inst)                                  \
+    static struct demo_device_data demo_data_##inst;              \
+    static const struct demo_device_config demo_config_##inst = { \
+        .label      = DT_INST_PROP_OR(inst, label, NULL),         \
+        .numeric_id = DT_INST_PROP_OR(inst, numeric_id, -1),      \
+    };                                                            \
+    DEVICE_DT_INST_DEFINE(inst, demo_device_init, NULL,           \
+                          &demo_data_##inst, &demo_config_##inst, \
+                          POST_KERNEL, CONFIG_DEMO_INIT_PRIORITY, \
+                          &demo_device_api);
 
-DT_INST_FOREACH_STATUS_OKAY(BLINK_GPIO_LED_DEFINE)
+DT_INST_FOREACH_STATUS_OKAY(DEMO_DEVICE_DEFINE)
 ```
 
-`DT_INST_FOREACH_STATUS_OKAY` expands the macro **once per enabled DT node**.
+`DT_INST_FOREACH_STATUS_OKAY` expands the macro **once per enabled DT node** — both `DEMO_0` and `DEMO_1` are instantiated from this single definition.
 
 ---
 
 ## File 5: Kconfig — Auto-Enable from DT
 
 ```kconfig
-config BLINK_GPIO_LED
-    bool "GPIO-controlled LED blink driver"
+menuconfig DEMO
+    bool "Demo device drivers"
+
+config DEMO_INIT_PRIORITY
+    int "Demo device drivers init priority"
+    default KERNEL_INIT_PRIORITY_DEVICE
+
+config DEMO_DEVICE
+    bool "Virtual demo device driver"
     default y
-    depends on DT_HAS_BLINK_GPIO_LED_ENABLED  /* set automatically by dtc */
-    select GPIO
+    depends on DT_HAS_DEMO_DEVICE_ENABLED
 ```
 
-- `DT_HAS_BLINK_GPIO_LED_ENABLED` is auto-generated when a matching DT node exists
-- Driver compiles **only when** the devicetree declares it
-- `CMakeLists.txt`: `zephyr_library_sources_ifdef(CONFIG_BLINK_GPIO_LED gpio_led.c)`
+- `DT_HAS_DEMO_DEVICE_ENABLED` is **auto-generated** when a `demo-device` DT node with `status = "okay"` exists
+- Driver compiles only when the devicetree declares it
+- `prj.conf` sets `CONFIG_DEMO=y` and `CONFIG_DEMO_LOG_LEVEL_DBG=y`
 
 ---
 
-## Data Flow: DTS → Running Driver
+## Data Flow: DT Overlay → Running Driver
 
 ```
-custom_plank.dts
-    └── blink-led node  (compatible = "blink-gpio-led")
+native_sim.overlay
+    └── demo-device-0  (compatible = "demo-device", label = "DEMO_0")
+    └── demo-device-1  (compatible = "demo-device", label = "DEMO_1")
               │
               ▼  dtc validates against...
-    blink-gpio-leds.yaml
+    demo-device.yaml
               │
               ▼  generates devicetree.h macros used by...
-    gpio_led.c
-        GPIO_DT_SPEC_INST_GET()  → reads led-gpios
-        DT_INST_PROP_OR()        → reads blink-period-ms
-        DEVICE_DT_INST_DEFINE()  → creates struct device at boot
+    demo_device.c
+        DT_INST_PROP_OR(inst, label, NULL)      → "DEMO_0" / "DEMO_1"
+        DT_INST_PROP_OR(inst, numeric_id, -1)   → 1 / 2
+        DEVICE_DT_INST_DEFINE()  → two struct device objects at boot
               │
-              ▼  device registered, API wired to...
-    blink_set_period_ms()  →  blink_gpio_led_set_period_ms()
+              ▼  dispatched through demo_driver_api vtable...
+    demo_enable() / demo_disable() / demo_get_status()
 ```
+
+---
+
+## Sample Application — What You See
+
+```
+[00:00:00.000,000] <inf> demo_device: [DEMO_0] demo_device initialised
+[00:00:00.000,000] <inf> demo_device: [DEMO_1] demo_device initialised
+
+--- Step 2: enable both ---
+[00:00:00.000,000] <inf> demo_device: [DEMO_0] demo_enable() called
+[00:00:00.000,000] <inf> demo_device: [DEMO_0] device is now ENABLED
+
+--- Step 3: enable again (expect -EALREADY) ---
+[00:00:00.000,000] <inf> demo_device: [DEMO_0] demo_enable() called
+[00:00:00.000,000] <wrn> demo_device: [DEMO_0] already enabled — returning -EALREADY
+
+--- Step 4: disable demo0 ---
+[00:00:00.000,000] <inf> demo_device: [DEMO_0] demo_disable() called
+[00:00:00.000,000] <inf> demo_device: [DEMO_0] device is now DISABLED
+```
+
+Every call goes: **app → `demo.h` inline → vtable → `demo_device.c` → log**
 
 ---
 
@@ -259,12 +321,12 @@ custom_plank.dts
 
 | Macro | Purpose |
 |-------|---------|
-| `DT_DRV_COMPAT` | Compatible string for this driver (snake_case) |
-| `GPIO_DT_SPEC_INST_GET(inst, prop)` | Read GPIO phandle-array from DTS |
-| `DT_INST_PROP_OR(inst, prop, default)` | Read integer property from DTS |
-| `DEVICE_DT_INST_DEFINE(inst, ...)` | Create `struct device` from DT node |
-| `DT_INST_FOREACH_STATUS_OKAY(fn)` | Iterate all enabled matching nodes |
-| `DEVICE_API(class, name)` | Declare driver class operations struct |
+| `DT_DRV_COMPAT` | Binds this driver to a compatible string (snake_case) |
+| `DT_INST_PROP_OR(inst, prop, default)` | Read a DT property; fall back to default |
+| `DEVICE_DT_INST_DEFINE(inst, ...)` | Create a `struct device` from a DT node |
+| `DT_INST_FOREACH_STATUS_OKAY(fn)` | Expand `fn(inst)` for each enabled node |
+| `DEVICE_API(class, name)` | Declare a driver class operations struct |
+| `DEVICE_DT_GET(node)` | Get a device pointer from a DT node at compile time |
 
 ---
 
@@ -273,17 +335,17 @@ custom_plank.dts
 1. **Binding YAML** — `dts/bindings/<class>/your-device.yaml`
    Define `compatible`, properties and their types
 
-2. **DT node** — `boards/<vendor>/<board>/board.dts`
-   Instantiate the device with real hardware parameters
+2. **DT overlay / `.dts`** — add a node with your `compatible` and `status = "okay"`
 
 3. **Driver C file** — `drivers/<class>/your_driver.c`
-   `DT_DRV_COMPAT`, config struct, init, API ops, instance macro
+   `DT_DRV_COMPAT`, data/config structs, init, API ops table, instance macro
 
-4. **Kconfig** — depend on `DT_HAS_<COMPAT>_ENABLED`, select dependencies
+4. **Kconfig** — `depends on DT_HAS_<COMPAT>_ENABLED`, set `default y`
 
 5. **CMakeLists.txt** — `zephyr_library_sources_ifdef(CONFIG_... file.c)`
 
-6. **Public header** — `include/app/drivers/your_class.h` (if reusable class)
+6. **Public header** — `include/app/drivers/your_class.h`
+   `__subsystem` struct + `static inline` API wrappers
 
 ---
 
@@ -291,8 +353,9 @@ custom_plank.dts
 
 ## Summary
 
-- The `.dts` file is in `boards/<vendor>/<board>/`
-- `compatible` string is the glue between DTS → YAML → C driver
-- `DT_INST_FOREACH_STATUS_OKAY` auto-instantiates one device per DT node
-- Kconfig auto-enables the driver when the DT node is present
-- Applications use only the public API header — never driver internals
+- `compatible` string is the glue: DT node → YAML schema → C driver
+- No hardware needed — a **software-only driver** is a valid Zephyr driver
+- `DT_INST_FOREACH_STATUS_OKAY` instantiates one device per DT node automatically
+- Kconfig is auto-enabled via `DT_HAS_DEMO_DEVICE_ENABLED`
+- Applications call only the **public API** (`demo.h`) — never driver internals
+- Zephyr **logger** (`LOG_INF`, `LOG_WRN`) makes the call chain fully observable
