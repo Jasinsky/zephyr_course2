@@ -1,0 +1,21 @@
+/*
+ * native_sim.overlay
+ *
+ * Adds a demo-device DT node for the native_sim board.
+ * This is how you instantiate the demo driver without modifying any
+ * board files — perfect for development and testing.
+ */
+
+/ {
+	demo_dev0: demo-device-0 {
+		compatible = "demo-device";
+		label = "DEMO_0";
+		status = "okay";
+	};
+
+	demo_dev1: demo-device-1 {
+		compatible = "demo-device";
+		label = "DEMO_1";
+		status = "okay";
+	};
+};

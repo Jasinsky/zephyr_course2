@@ -1,0 +1,26 @@
+# Copyright (c) 2024 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig DEMO
+	bool "Demo device drivers"
+	help
+	  Enables the demo custom driver class.
+	  This class is used for course demonstrations — every API call
+	  produces a log message so the call chain is fully visible.
+
+if DEMO
+
+config DEMO_INIT_PRIORITY
+	int "Demo device drivers init priority"
+	default KERNEL_INIT_PRIORITY_DEVICE
+	help
+	  Initialisation priority for demo device instances.
+	  Lower numbers initialise earlier.
+
+module = DEMO
+module-str = demo
+source "subsys/logging/Kconfig.template.log_config"
+
+rsource "Kconfig.demo_device"
+
+endif # DEMO

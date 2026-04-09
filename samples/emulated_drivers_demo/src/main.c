@@ -2,7 +2,7 @@
  * Emulated Drivers Demo for native_sim
  *
  * Demonstrates using Zephyr's emulated ADC and GPIO drivers on native_sim.
- * This is course material showing how emulated peripherals work without
+ * showing how emulated peripherals work without
  * real hardware.
  */
 

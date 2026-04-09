@@ -1,0 +1,17 @@
+# Copyright (c) 2024 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+config DEMO_DEVICE
+	bool "Virtual demo device driver"
+	default y
+	depends on DT_HAS_DEMO_DEVICE_ENABLED
+	help
+	  Enable the virtual demo device driver.
+
+	  This driver has no real hardware — every call to demo_enable(),
+	  demo_disable(), or demo_get_status() emits a log message and
+	  updates internal state. It is designed to demonstrate how custom
+	  Zephyr driver classes work.
+
+	  The driver is enabled automatically when a DT node with
+	  compatible = "demo-device" and status = "okay" is present.
